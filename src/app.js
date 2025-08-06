@@ -16,11 +16,12 @@ app.use(express.urlencoded({extended:true}));
 app.use(bodyParser.json())
 app.use(cookieParser());
 app.use(cors({
-    origin:process.env.FRONTEND_URL || "http://localhost:5173",
+    origin:process.env.FRONTEND_URL || "https://app.golabing.ai",
     credentials:true,
 }));
 
-
+// ✅ Health Check Route
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
 //routes
 app.use('/uploads', express.static('public/uploads'));
