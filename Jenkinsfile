@@ -2,11 +2,12 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'us-east-1'
+        AWS_REGION     = 'us-east-1'
         AWS_ACCOUNT_ID = '751057572977'
-        ECR_REPO = 'user-service'
-        IMAGE_TAG = "${BUILD_NUMBER}"
-        IMAGE_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}"
+        ECR_REPO       = 'user-service'
+        IMAGE_TAG      = "${BUILD_NUMBER}"
+        IMAGE_URI      = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}"
+        IMAGE_LATEST   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest"
     }
 
     stages {
@@ -41,12 +42,20 @@ pipeline {
             steps {
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: '9df79d1f-0539-4d32-9b7d-02ed68426fb9' // ✅ Use your correct AWS credential ID
+                    credentialsId: '9df79d1f-0539-4d32-9b7d-02ed68426fb9'
                 ]]) {
                     sh '''
                         aws --version
                         aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+                        # Push build number tag
                         docker push $IMAGE_URI
+
+                        # Tag as latest
+                        docker tag $IMAGE_URI $IMAGE_LATEST
+
+                        # Push latest tag
+                        docker push $IMAGE_LATEST
                     '''
                 }
             }
@@ -56,6 +65,7 @@ pipeline {
     post {
         success {
             echo "✅ Successfully pushed image to ECR: $IMAGE_URI"
+            echo "✅ Also pushed 'latest' tag: $IMAGE_LATEST"
         }
         failure {
             echo "❌ Jenkins pipeline failed. Check logs."
