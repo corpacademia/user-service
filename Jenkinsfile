@@ -58,7 +58,6 @@ pipeline {
             }
         }
 
-        // ✅ NEW STAGE: Deploy to ECS
         stage('Deploy to ECS') {
             steps {
                 withCredentials([[
@@ -68,19 +67,20 @@ pipeline {
                     sh '''
                         echo "🔄 Registering new ECS task definition revision..."
 
-                        # Fetch existing task definition
+                        # Fetch current task definition
                         aws ecs describe-task-definition \
                           --task-definition $TASK_FAMILY \
                           --region $AWS_REGION \
                           --query taskDefinition > taskdef.json
 
-                        # Update image + env vars
-                        cat taskdef.json | \
-                          jq '.containerDefinitions[0].image = env.IMAGE_URI |
-                              .containerDefinitions[0].environment = [
-                                  {"name":"FRONTEND_URL","value":"https://app.golabing.ai"},
-                                  {"name":"NODE_ENV","value":"production"}
-                              ]' > new-taskdef.json
+                        # Remove read-only fields and update container image + env vars
+                        jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                                .compatibilities, .registeredAt, .registeredBy)
+                            | .containerDefinitions[0].image = env.IMAGE_URI
+                            | .containerDefinitions[0].environment = [
+                                {"name":"FRONTEND_URL","value":"https://app.golabing.ai"},
+                                {"name":"NODE_ENV","value":"production"}
+                              ]' taskdef.json > new-taskdef.json
 
                         # Register new revision
                         aws ecs register-task-definition \
