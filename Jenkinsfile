@@ -8,6 +8,10 @@ pipeline {
         IMAGE_TAG      = "${BUILD_NUMBER}"
         IMAGE_URI      = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMAGE_TAG}"
         IMAGE_LATEST   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest"
+
+        CLUSTER_NAME   = 'backend-services-ecs'
+        SERVICE_NAME   = 'task-user-service-service-gjnsp87p'
+        TASK_FAMILY    = 'task-user-service'
     }
 
     stages {
@@ -33,7 +37,6 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker --version'
                 sh "docker build -t ${IMAGE_URI} ."
             }
         }
@@ -45,17 +48,51 @@ pipeline {
                     credentialsId: '9df79d1f-0539-4d32-9b7d-02ed68426fb9'
                 ]]) {
                     sh '''
-                        aws --version
                         aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-                        # Push build number tag
                         docker push $IMAGE_URI
-
-                        # Tag as latest
                         docker tag $IMAGE_URI $IMAGE_LATEST
-
-                        # Push latest tag
                         docker push $IMAGE_LATEST
+                    '''
+                }
+            }
+        }
+
+        // ✅ NEW STAGE: Deploy to ECS
+        stage('Deploy to ECS') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: '9df79d1f-0539-4d32-9b7d-02ed68426fb9'
+                ]]) {
+                    sh '''
+                        echo "🔄 Registering new ECS task definition revision..."
+
+                        # Fetch existing task definition
+                        aws ecs describe-task-definition \
+                          --task-definition $TASK_FAMILY \
+                          --region $AWS_REGION \
+                          --query taskDefinition > taskdef.json
+
+                        # Update image + env vars
+                        cat taskdef.json | \
+                          jq '.containerDefinitions[0].image = env.IMAGE_URI |
+                              .containerDefinitions[0].environment = [
+                                  {"name":"FRONTEND_URL","value":"https://app.golabing.ai"},
+                                  {"name":"NODE_ENV","value":"production"}
+                              ]' > new-taskdef.json
+
+                        # Register new revision
+                        aws ecs register-task-definition \
+                          --cli-input-json file://new-taskdef.json \
+                          --region $AWS_REGION
+
+                        echo "🚀 Updating ECS service with new task definition..."
+                        aws ecs update-service \
+                          --cluster $CLUSTER_NAME \
+                          --service $SERVICE_NAME \
+                          --force-new-deployment \
+                          --region $AWS_REGION
                     '''
                 }
             }
@@ -64,8 +101,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Successfully pushed image to ECR: $IMAGE_URI"
-            echo "✅ Also pushed 'latest' tag: $IMAGE_LATEST"
+            echo "✅ Successfully deployed new image to ECS service: $SERVICE_NAME"
         }
         failure {
             echo "❌ Jenkins pipeline failed. Check logs."
