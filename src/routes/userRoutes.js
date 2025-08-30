@@ -18,6 +18,8 @@ const {
     addOrganizationUser,
     getOrganizationUser,
     deleteRandomUsers,
+    sendVerificationEmail,   // ✅ added
+    verifyEmailCode          // ✅ added
 } = require('../controllers/authController');
 
 const router = express.Router();
@@ -42,5 +44,9 @@ router.post('/insertUsers', insertUsers);
 router.post('/addOrganizationUser', addOrganizationUser);
 router.post('/getOrganizationUsers', getOrganizationUser);
 router.post('/deleteUsers', deleteRandomUsers);
+
+// ✅ Added verification routes
+router.post('/send-verification-code', sendVerificationEmail);
+router.post('/verify-code', verifyEmailCode);
 
 module.exports = router;
