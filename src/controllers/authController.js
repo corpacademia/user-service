@@ -417,9 +417,9 @@ const addOrganizationUser = async (req, res) => {
   // Controller: Update User Profile
   const updateUserProfile = async (req, res) => {
     try {
-      const {id , name, email, password, phone, location } = req.body;
+      const {userId , name, email, password, phone, location,currentPassword } = req.body;
       const profilePhoto = req.files[0] ? req.files[0].path : null;
-      const updatedUser = await userServices.updateUserProfile(id, name, email, password, phone, location, profilePhoto);
+      const updatedUser = await userServices.updateUserProfile(userId, name, email, password, phone, location, profilePhoto,currentPassword);
       if (!updatedUser) {
         return res.status(404).send({
           success: true,

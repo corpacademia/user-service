@@ -649,19 +649,27 @@ const addOrganizationUser = async (userData) => {
   };
 
   //update user profile
-  const updateUserProfile = async ( id, name, email, password, phone, location, profilephoto) => {
+  const updateUserProfile = async ( id, name, email, password, phone, location, profilephoto,currentPassword) => {
   try {
+    console.log("Updating user profile with:", { id, name, email, password, phone, location, profilephoto,currentPassword });
     if (!id || !name || !email) {
       throw new Error("Please provide the required fields");
     }
-
+    if (phone === undefined || phone === '' ) {
+      phone = null;
+    }
+    if (location === undefined || location === '') {
+      location = null;
+    }
     const userResult = await pool.query(userQueries.GET_USER_BY_ID, [id]);
     if (userResult.rows.length > 0) {
       const existingUser = userResult.rows[0];
 
       // Use existing profile photo if none provided
       const finalProfilePhoto = profilephoto ?? existingUser.profilephoto;
-
+      if(currentPassword && !(await bcrypt.compare(currentPassword, existingUser.password))){
+        throw new Error("Current password is incorrect");
+      }
       if (password && (await bcrypt.compare(password, existingUser.password))) {
         throw new Error("New password cannot be same as the old password");
       }
@@ -671,7 +679,7 @@ const addOrganizationUser = async (userData) => {
         : userQueries.updateUserProfileWithNoPassword;
       const values = password
         ? [name, email, await bcrypt.hash(password, 10), phone, location, finalProfilePhoto, id]
-        : [name, email, phone, location, finalProfilePhoto, id];
+        : [name, email, phone , location, finalProfilePhoto, id];
 
       const result = await pool.query(query, values);
       return result.rows[0];
