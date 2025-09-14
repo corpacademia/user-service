@@ -10,7 +10,7 @@ pipeline {
         IMAGE_LATEST   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest"
 
         CLUSTER_NAME   = 'backend-services-ecs'
-        SERVICE_NAME   = 'task-user-service-service-gjnsp87p'
+        SERVICE_NAME   = 'task-user-service-service-ndcatft4'
         TASK_FAMILY    = 'task-user-service'
     }
 
