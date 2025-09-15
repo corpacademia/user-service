@@ -17,11 +17,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(cors({
-    origin: process.env.FRONTEND_URL || "httpps://app.golabing.ai",
+    origin: process.env.FRONTEND_URL || "https://app.golabing.ai",
     credentials: true,
 }));
 
-// ✅ Add Health Check Route
+// ✅ Health Check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
@@ -29,8 +29,7 @@ app.get('/health', (req, res) => {
 // Static files
 app.use('/uploads', express.static('public/uploads'));
 
-// ✅ ✅ MOUNT your routes under the correct prefix
-app.use('/api/v1/ms', authRouter);
+// ✅ MOUNT your routes under desired API prefix
+app.use('/api/v1/user_ms', authRouter); // <--- this is the fix
 
-// Export app
 module.exports = app;
