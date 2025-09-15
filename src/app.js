@@ -8,7 +8,7 @@ const app = express();
 
 // Tables
 const tables = require('./dbconfig/userTables');
-tables;
+tables; // Initializes tables on start
 
 // Middleware
 app.use(express.json());
@@ -21,7 +21,7 @@ app.use(cors({
     credentials: true,
 }));
 
-// ✅ Add Health Check Route BEFORE other routes
+// ✅ Add Health Check Route
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
 });
@@ -29,7 +29,8 @@ app.get('/health', (req, res) => {
 // Static files
 app.use('/uploads', express.static('public/uploads'));
 
-// Routes
-app.use('/', authRouter);
+// ✅ ✅ MOUNT your routes under the correct prefix
+app.use('/api/v1/ms', authRouter);
 
+// Export app
 module.exports = app;
