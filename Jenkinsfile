@@ -86,15 +86,15 @@ pipeline {
       }
     }
 
-    stage('Register new Task Definition & Deploy') {
+        stage('Register new Task Definition & Deploy') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'a9cd0d04-49fd-4ec3-8fd0-29122149b3b6']]) {
           sh '''
-            set -e
+            set -euo pipefail
             echo "Fetching current task definition for family: ${TASK_FAMILY}"
             aws ecs describe-task-definition --task-definition ${TASK_FAMILY} --region ${AWS_REGION} --query taskDefinition > taskdef.json
 
-            # Remove read-only fields and set image + merge/add environment vars (including HTML_TEMPLATE_PATH)
+            # Patch image and add/merge environment variables into the first container
             cat taskdef.json | \
               jq --arg IMG "${IMAGE_URI}" --arg HTML_PATH "${HTML_TEMPLATE_PATH}" '
                 .containerDefinitions[0].image = $IMG
@@ -107,8 +107,33 @@ pipeline {
                 | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
               ' > new-taskdef.json
 
-            # Wrap into register payload: keep family, containerDefinitions, volumes, roles and network settings
-            jq '{family: .family, containerDefinitions: .containerDefinitions, volumes: .volumes, taskRoleArn: .taskRoleArn, executionRoleArn: .executionRoleArn, networkMode: .networkMode, placementConstraints: .placementConstraints, requiresCompatibilities: .requiresCompatibilities, cpu: .cpu, memory: .memory}' new-taskdef.json > register-payload.json
+            # Build a minimal register payload with keys AWS expects
+            jq '{ family: .family,
+                  containerDefinitions: .containerDefinitions,
+                  volumes: .volumes,
+                  taskRoleArn: .taskRoleArn,
+                  executionRoleArn: .executionRoleArn,
+                  networkMode: .networkMode,
+                  placementConstraints: .placementConstraints,
+                  requiresCompatibilities: .requiresCompatibilities,
+                  cpu: .cpu,
+                  memory: .memory
+                }' new-taskdef.json > register-payload-raw.json
+
+            # Remove ANY null values anywhere in the payload (recursive). Requires jq >= 1.6.
+            cat register-payload-raw.json \
+              | jq 'def remove_nulls: walk(if type == "object" then with_entries(select(.value != null)) else . end); remove_nulls' \
+              > register-payload.json
+
+            # Fallback for older jq
+            if [ $? -ne 0 ]; then
+              echo "jq walk() failed — falling back to targeted null-removal"
+              cat register-payload-raw.json \
+                | jq 'if .taskRoleArn == null then del(.taskRoleArn) else . end
+                     | if .executionRoleArn == null then del(.executionRoleArn) else . end
+                     | if .volumes == null then del(.volumes) else . end' \
+                > register-payload.json
+            fi
 
             echo "Registering new task definition revision..."
             aws ecs register-task-definition --cli-input-json file://register-payload.json --region ${AWS_REGION} > register-output.json
@@ -122,6 +147,7 @@ pipeline {
         }
       }
     }
+
 
     stage('Wait for Deployment & Verify') {
       steps {
