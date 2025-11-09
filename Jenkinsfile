@@ -127,4 +127,35 @@ pipeline {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'a9cd0d04-49fd-4ec3-8fd0-29122149b3b6']]) {
           sh '''
+            echo "Waiting for ECS service to stabilize..."
+            aws ecs wait services-stable --cluster ${CLUSTER_NAME} --services ${SERVICE_NAME} --region ${AWS_REGION}
+            echo "Service is stable."
 
+            echo "Inspect one running task and show template file content (requires ECS Exec enabled)"
+            TASK_ARN=$(aws ecs list-tasks --cluster ${CLUSTER_NAME} --service-name ${SERVICE_NAME} --desired-status RUNNING --query 'taskArns[0]' --output text --region ${AWS_REGION})
+            if [ -n "$TASK_ARN" ]; then
+              CONTAINER_NAME=$(jq -r '.containerDefinitions[0].name' taskdef.json)
+              echo "Using task: $TASK_ARN, container: $CONTAINER_NAME"
+              # ECS Exec will only work if enabled; this command may fail if not configured.
+              aws ecs execute-command --cluster ${CLUSTER_NAME} --task $TASK_ARN --container $CONTAINER_NAME --interactive --command "/bin/sh -c 'echo HTML_TEMPLATE_PATH=$HTML_TEMPLATE_PATH; ls -la $(dirname $HTML_TEMPLATE_PATH) || true; cat $HTML_TEMPLATE_PATH | sed -n \"1,40p\" || true'" --region ${AWS_REGION} || echo "ECS Exec not available or not enabled; verify file via logs or by SSH/SSM into host."
+            else
+              echo "No running tasks found to verify file."
+            fi
+          '''
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "✅ Successfully deployed new image to ECS service: ${SERVICE_NAME}"
+    }
+    failure {
+      echo "❌ Jenkins pipeline failed. Check logs."
+    }
+    always {
+      sh 'docker image prune -f || true'
+    }
+  }
+}
