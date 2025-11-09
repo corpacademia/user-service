@@ -10,14 +10,28 @@ pipeline {
     IMAGE_LATEST   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest"
 
     CLUSTER_NAME   = 'DevCluster-golabing'
-    SERVICE_NAME   = 'user-service-service-npk7b8tz'   // trimmed trailing space
+    SERVICE_NAME   = 'user-service-service-npk7b8tz'
     TASK_FAMILY    = 'user-service'
 
-    // absolute path inside container where template will be copied by Dockerfile
+    // Path inside container for HTML template
     HTML_TEMPLATE_PATH = '/usr/src/app/templates/email-verification-template.html'
   }
 
   stages {
+
+    stage('Agent Tool Check') {
+      steps {
+        sh '''
+          echo "🔍 Checking essential tools..."
+          bash --version || { echo "❌ bash not installed"; exit 2; }
+          jq --version || { echo "❌ jq missing"; exit 2; }
+          docker --version || { echo "❌ docker missing"; exit 2; }
+          aws --version || { echo "❌ aws cli missing"; exit 2; }
+          echo "✅ All required tools found."
+        '''
+      }
+    }
+
     stage('Checkout Code') {
       steps { checkout scm }
     }
@@ -26,11 +40,11 @@ pipeline {
       steps {
         sh '''
           if [ ! -f templates/email-verification-template.html ]; then
-            echo "ERROR: templates/email-verification-template.html missing!"
+            echo "❌ ERROR: templates/email-verification-template.html missing!"
             ls -la || true
             exit 2
           fi
-          echo "Template present."
+          echo "✅ Template present."
         '''
       }
     }
@@ -38,11 +52,12 @@ pipeline {
     stage('Install Dependencies') {
       steps {
         sh '''
-          # ensure node & npm available on Jenkins executor
           if ! command -v node >/dev/null 2>&1; then
+            echo "Installing Node.js 18..."
             curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
             sudo apt-get install -y nodejs
           fi
+          echo "📦 Installing dependencies..."
           npm ci || npm install
         '''
       }
@@ -50,13 +65,18 @@ pipeline {
 
     stage('Run Tests') {
       steps {
-        sh 'npm test || echo "⚠️ No tests found or tests failed."'
+        sh '''
+          npm test || echo "⚠️ No tests found or tests failed (non-blocking)."
+        '''
       }
     }
 
     stage('Build Docker Image') {
       steps {
-        sh "docker build --no-cache -t ${ECR_REPO}:${IMAGE_TAG} ."
+        sh '''
+          echo "🐳 Building Docker image..."
+          docker build --no-cache -t ${ECR_REPO}:${IMAGE_TAG} .
+        '''
       }
     }
 
@@ -65,9 +85,11 @@ pipeline {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'a9cd0d04-49fd-4ec3-8fd0-29122149b3b6']]) {
           sh '''
             set -e
+            echo "🔐 Ensuring ECR repo exists and logging in..."
             aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION} >/dev/null 2>&1 || \
               aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION}
-            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+            aws ecr get-login-password --region ${AWS_REGION} | \
+              docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
           '''
         }
       }
@@ -77,6 +99,7 @@ pipeline {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'a9cd0d04-49fd-4ec3-8fd0-29122149b3b6']]) {
           sh '''
+            echo "📤 Pushing Docker image to ECR..."
             docker tag ${ECR_REPO}:${IMAGE_TAG} ${IMAGE_URI}
             docker push ${IMAGE_URI}
             docker tag ${IMAGE_URI} ${IMAGE_LATEST}
@@ -86,88 +109,97 @@ pipeline {
       }
     }
 
-        stage('Register new Task Definition & Deploy') {
+    stage('Register new Task Definition & Deploy') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'a9cd0d04-49fd-4ec3-8fd0-29122149b3b6']]) {
           sh '''
-            set -euo pipefail
-            echo "Fetching current task definition for family: ${TASK_FAMILY}"
-            aws ecs describe-task-definition --task-definition ${TASK_FAMILY} --region ${AWS_REGION} --query taskDefinition > taskdef.json
+bash -lc <<'BASH'
+set -euo pipefail
 
-            # Patch image and add/merge environment variables into the first container
-            cat taskdef.json | \
-              jq --arg IMG "${IMAGE_URI}" --arg HTML_PATH "${HTML_TEMPLATE_PATH}" '
-                .containerDefinitions[0].image = $IMG
-                | .containerDefinitions[0].environment = (
-                    (.containerDefinitions[0].environment // []) +
-                    [ {"name":"HTML_TEMPLATE_PATH","value":$HTML_PATH},
-                      {"name":"FRONTEND_URL","value":"https://app.golabing.ai"},
-                      {"name":"NODE_ENV","value":"production"} ]
-                  )
-                | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
-              ' > new-taskdef.json
+echo "📄 Fetching current task definition for family: ${TASK_FAMILY}"
+aws ecs describe-task-definition --task-definition ${TASK_FAMILY} --region ${AWS_REGION} --query taskDefinition > taskdef.json
 
-            # Build a minimal register payload with keys AWS expects
-            jq '{ family: .family,
-                  containerDefinitions: .containerDefinitions,
-                  volumes: .volumes,
-                  taskRoleArn: .taskRoleArn,
-                  executionRoleArn: .executionRoleArn,
-                  networkMode: .networkMode,
-                  placementConstraints: .placementConstraints,
-                  requiresCompatibilities: .requiresCompatibilities,
-                  cpu: .cpu,
-                  memory: .memory
-                }' new-taskdef.json > register-payload-raw.json
+echo "🔧 Updating container image and environment variables..."
+cat taskdef.json | jq --arg IMG "${IMAGE_URI}" --arg HTML_PATH "${HTML_TEMPLATE_PATH}" '
+  .containerDefinitions[0].image = $IMG
+  | .containerDefinitions[0].environment = (
+      (.containerDefinitions[0].environment // []) +
+      [ {"name":"HTML_TEMPLATE_PATH","value":$HTML_PATH},
+        {"name":"FRONTEND_URL","value":"https://app.golabing.ai"},
+        {"name":"NODE_ENV","value":"production"} ]
+    )
+  | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)
+' > new-taskdef.json
 
-            # Remove ANY null values anywhere in the payload (recursive). Requires jq >= 1.6.
-            cat register-payload-raw.json \
-              | jq 'def remove_nulls: walk(if type == "object" then with_entries(select(.value != null)) else . end); remove_nulls' \
-              > register-payload.json
+echo "🧩 Preparing minimal payload..."
+jq '{ family: .family,
+      containerDefinitions: .containerDefinitions,
+      volumes: .volumes,
+      taskRoleArn: .taskRoleArn,
+      executionRoleArn: .executionRoleArn,
+      networkMode: .networkMode,
+      placementConstraints: .placementConstraints,
+      requiresCompatibilities: .requiresCompatibilities,
+      cpu: .cpu,
+      memory: .memory }' new-taskdef.json > register-payload-raw.json
 
-            # Fallback for older jq
-            if [ $? -ne 0 ]; then
-              echo "jq walk() failed — falling back to targeted null-removal"
-              cat register-payload-raw.json \
-                | jq 'if .taskRoleArn == null then del(.taskRoleArn) else . end
-                     | if .executionRoleArn == null then del(.executionRoleArn) else . end
-                     | if .volumes == null then del(.volumes) else . end' \
-                > register-payload.json
-            fi
+# Clean null fields (jq >=1.6) or fallback
+if ! cat register-payload-raw.json | jq 'def remove_nulls: walk(if type == "object" then with_entries(select(.value != null)) else . end); remove_nulls' > register-payload.json; then
+  echo "⚠️ jq <1.6 detected — using fallback cleanup"
+  cat register-payload-raw.json | jq 'if .taskRoleArn == null then del(.taskRoleArn) else . end
+       | if .executionRoleArn == null then del(.executionRoleArn) else . end
+       | if .volumes == null then del(.volumes) else . end' > register-payload.json
+fi
 
-            echo "Registering new task definition revision..."
-            aws ecs register-task-definition --cli-input-json file://register-payload.json --region ${AWS_REGION} > register-output.json
+echo "🆕 Registering new task definition..."
+for i in 1 2 3; do
+  if aws ecs register-task-definition --cli-input-json file://register-payload.json --region ${AWS_REGION} > register-output.json; then
+    break
+  else
+    echo "Retry $i/3 failed; waiting before retry..."
+    sleep $((i*5))
+  fi
+done
 
-            NEW_TASK_DEF_ARN=$(jq -r '.taskDefinition.taskDefinitionArn' register-output.json)
-            echo "New task def ARN: $NEW_TASK_DEF_ARN"
+NEW_TASK_DEF_ARN=$(jq -r '.taskDefinition.taskDefinitionArn' register-output.json)
+echo "✅ New task definition: $NEW_TASK_DEF_ARN"
 
-            echo "Updating service ${SERVICE_NAME} on cluster ${CLUSTER_NAME} to new task def..."
-            aws ecs update-service --cluster ${CLUSTER_NAME} --service ${SERVICE_NAME} --task-definition $NEW_TASK_DEF_ARN --force-new-deployment --region ${AWS_REGION}
-          '''
+echo "🚀 Updating ECS service ${SERVICE_NAME} in cluster ${CLUSTER_NAME}..."
+for i in 1 2 3; do
+  if aws ecs update-service --cluster ${CLUSTER_NAME} --service ${SERVICE_NAME} --task-definition $NEW_TASK_DEF_ARN --force-new-deployment --region ${AWS_REGION}; then
+    break
+  else
+    echo "Retry $i/3 for service update..."
+    sleep $((i*5))
+  fi
+done
+
+BASH
+'''
         }
       }
     }
 
-
     stage('Wait for Deployment & Verify') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'a9cd0d04-49fd-4ec3-8fd0-29122149b3b6']]) {
-          sh '''
-            echo "Waiting for ECS service to stabilize..."
-            aws ecs wait services-stable --cluster ${CLUSTER_NAME} --services ${SERVICE_NAME} --region ${AWS_REGION}
-            echo "Service is stable."
+          timeout(time: 15, unit: 'MINUTES') {
+            sh '''
+              echo "⏳ Waiting for ECS service to stabilize..."
+              aws ecs wait services-stable --cluster ${CLUSTER_NAME} --services ${SERVICE_NAME} --region ${AWS_REGION}
+              echo "✅ Service stabilized successfully."
 
-            echo "Inspect one running task and show template file content (requires ECS Exec enabled)"
-            TASK_ARN=$(aws ecs list-tasks --cluster ${CLUSTER_NAME} --service-name ${SERVICE_NAME} --desired-status RUNNING --query 'taskArns[0]' --output text --region ${AWS_REGION})
-            if [ -n "$TASK_ARN" ]; then
-              CONTAINER_NAME=$(jq -r '.containerDefinitions[0].name' taskdef.json)
-              echo "Using task: $TASK_ARN, container: $CONTAINER_NAME"
-              # ECS Exec will only work if enabled; this command may fail if not configured.
-              aws ecs execute-command --cluster ${CLUSTER_NAME} --task $TASK_ARN --container $CONTAINER_NAME --interactive --command "/bin/sh -c 'echo HTML_TEMPLATE_PATH=$HTML_TEMPLATE_PATH; ls -la $(dirname $HTML_TEMPLATE_PATH) || true; cat $HTML_TEMPLATE_PATH | sed -n \"1,40p\" || true'" --region ${AWS_REGION} || echo "ECS Exec not available or not enabled; verify file via logs or by SSH/SSM into host."
-            else
-              echo "No running tasks found to verify file."
-            fi
-          '''
+              echo "🔍 Checking running task..."
+              TASK_ARN=$(aws ecs list-tasks --cluster ${CLUSTER_NAME} --service-name ${SERVICE_NAME} --desired-status RUNNING --query 'taskArns[0]' --output text --region ${AWS_REGION})
+              if [ -n "$TASK_ARN" ]; then
+                CONTAINER_NAME=$(jq -r '.containerDefinitions[0].name' taskdef.json)
+                echo "Using task: $TASK_ARN, container: $CONTAINER_NAME"
+                aws ecs execute-command --cluster ${CLUSTER_NAME} --task $TASK_ARN --container $CONTAINER_NAME --interactive --command "/bin/sh -c 'echo HTML_TEMPLATE_PATH=$HTML_TEMPLATE_PATH; ls -la $(dirname $HTML_TEMPLATE_PATH) || true; cat $HTML_TEMPLATE_PATH | sed -n \"1,20p\" || true'" --region ${AWS_REGION} || echo "⚠️ ECS Exec not enabled; verify via logs."
+              else
+                echo "⚠️ No running tasks found."
+              fi
+            '''
+          }
         }
       }
     }
@@ -175,10 +207,10 @@ pipeline {
 
   post {
     success {
-      echo "✅ Successfully deployed new image to ECS service: ${SERVICE_NAME}"
+      echo "✅ Deployment successful for service: ${SERVICE_NAME}"
     }
     failure {
-      echo "❌ Jenkins pipeline failed. Check logs."
+      echo "❌ Jenkins pipeline failed. Check the console logs for details."
     }
     always {
       sh 'docker image prune -f || true'
