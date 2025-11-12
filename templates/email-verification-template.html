@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{title}} - GoLabing.ai</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #ffffff !important;
+            background-color: #000000 !important;
+            background: #000000 !important;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #1a1a1a !important;
+            background: #1a1a1a !important;
+            border: 2px solid #6366f1;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+            padding: 32px;
+            text-align: center;
+            position: relative;
+        }
+        
+        .header.urgent {
+            background: linear-gradient(90deg, #ef4444 0%, #f97316 100%);
+        }
+        
+        .header.high {
+            background: linear-gradient(90deg, #f59e0b 0%, #eab308 100%);
+        }
+        
+        .header.medium {
+            background: linear-gradient(90deg, #3b82f6 0%, #6366f1 100%);
+        }
+        
+        .header.low {
+            background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+        }
+        
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+            animation: shimmer 3s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+        
+        .logo {
+            font-size: 32px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff 0%, #e0e7ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .tagline {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.8);
+            font-weight: 500;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .notification-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .content {
+            padding: 40px 32px;
+            background-color: #1a1a1a !important;
+            background: #1a1a1a !important;
+        }
+        
+        .notification-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        
+        .priority-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+        
+        .priority-urgent {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .priority-high {
+            background: #f59e0b;
+            color: white;
+        }
+        
+        .priority-medium {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .priority-low {
+            background: #10b981;
+            color: white;
+        }
+        
+        .notification-message {
+            background-color: #2a2a2a !important;
+            background: #2a2a2a !important;
+            border: 2px solid #6366f1;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 24px 0;
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 1.6;
+        }
+        
+        .metadata-section {
+            background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+            border: 1px solid #374151;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 24px 0;
+        }
+        
+        .metadata-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #6366f1;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .metadata-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #374151;
+            font-size: 14px;
+        }
+        
+        .metadata-item:last-child {
+            border-bottom: none;
+        }
+        
+        .metadata-label {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .metadata-value {
+            color: #ffffff;
+            font-weight: 500;
+        }
+        
+        .action-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            text-decoration: none;
+            padding: 16px 32px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 16px;
+            text-align: center;
+            margin: 20px 0;
+            transition: transform 0.2s;
+        }
+        
+        .action-button:hover {
+            transform: translateY(-2px);
+        }
+        
+        .action-center {
+            text-align: center;
+        }
+        
+        .timestamp {
+            background-color: #1e3a1e !important;
+            background: #1e3a1e !important;
+            border: 1px solid #22c55e;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 16px 0;
+            font-size: 13px;
+            color: #22c55e !important;
+            text-align: center;
+        }
+        
+        .footer {
+            background-color: #0a0a0a !important;
+            background: #0a0a0a !important;
+            padding: 24px 32px;
+            text-align: center;
+            border-top: 2px solid #6366f1;
+        }
+        
+        .footer p {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 8px;
+        }
+        
+        .support-link {
+            color: #6366f1;
+            text-decoration: none;
+        }
+        
+        .support-link:hover {
+            text-decoration: underline;
+        }
+        
+        .unsubscribe {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #374151;
+        }
+        
+        .unsubscribe a {
+            color: #9ca3af;
+            text-decoration: none;
+            font-size: 11px;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                margin: 10px;
+                border-radius: 12px;
+            }
+            
+            .header, .content, .footer {
+                padding: 24px 20px;
+            }
+            
+            .notification-title {
+                font-size: 24px;
+            }
+            
+            .logo {
+                font-size: 28px;
+            }
+            
+            .notification-icon {
+                width: 48px;
+                height: 48px;
+                font-size: 24px;
+            }
+            
+            .action-button {
+                padding: 12px 24px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header {{priority}}">
+            <div class="logo">GoLabing.ai</div>
+            <p class="tagline">AI-Powered Hands-On Lab Platform</p>
+            
+            <div class="notification-icon">
+                {{icon}}
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="action-center">
+                <span class="priority-badge priority-{{priority}}">{{priority}} Priority</span>
+            </div>
+            
+            <h2 class="notification-title">{{title}}</h2>
+            
+            <div class="notification-message">
+                {{message}}
+            </div>
+            
+            {{#if metadata}}
+            <div class="metadata-section">
+                <div class="metadata-title">
+                    📋 Details
+                </div>
+                {{#if metadata.labId}}
+                <div class="metadata-item">
+                    <span class="metadata-label">Lab ID:</span>
+                    <span class="metadata-value">{{metadata.labId}}</span>
+                </div>
+                {{/if}}
+                {{#if metadata.assessmentId}}
+                <div class="metadata-item">
+                    <span class="metadata-label">Assessment ID:</span>
+                    <span class="metadata-value">{{metadata.assessmentId}}</span>
+                </div>
+                {{/if}}
+                {{#if metadata.organizationId}}
+                <div class="metadata-item">
+                    <span class="metadata-label">Organization:</span>
+                    <span class="metadata-value">{{metadata.organizationId}}</span>
+                </div>
+                {{/if}}
+                {{#if metadata.amount}}
+                <div class="metadata-item">
+                    <span class="metadata-label">Amount:</span>
+                    <span class="metadata-value">${{metadata.amount}}</span>
+                </div>
+                {{/if}}
+                {{#if metadata.userId}}
+                <div class="metadata-item">
+                    <span class="metadata-label">User:</span>
+                    <span class="metadata-value">{{metadata.userId}}</span>
+                </div>
+                {{/if}}
+            </div>
+            {{/if}}
+            
+            {{#if actionUrl}}
+            <div class="action-center">
+                <a href="{{actionUrl}}" class="action-button">{{actionText}}</a>
+            </div>
+            {{/if}}
+            
+            <div class="timestamp">
+                🕒 Received on {{formattedDate}}
+            </div>
+            
+            <p style="font-size: 14px; color: rgba(255, 255, 255, 0.6); text-align: center; margin-top: 20px;">
+                You received this notification because you are subscribed to {{notificationType}} notifications.
+            </p>
+        </div>
+        
+        <div class="footer">
+            <p>
+                Need help? Contact our support team at 
+                <a href="mailto:support@golabing.ai" class="support-link">support@golabing.ai</a>
+            </p>
+            <p>© 2025 GoLabing.ai. All rights reserved.</p>
+            
+            <div class="unsubscribe">
+                <a href="{{unsubscribeUrl}}">Unsubscribe from these notifications</a> |
+                <a href="{{preferencesUrl}}">Manage notification preferences</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
